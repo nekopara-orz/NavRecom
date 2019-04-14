@@ -1,0 +1,111 @@
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.util.GenericOptionsParser;
+import org.apache.log4j.BasicConfigurator;
+
+import java.io.IOException;
+import java.util.Iterator;
+
+public class WordCountMR {
+
+    public static class WordCountMapper extends Mapper<LongWritable, Text, Text, IntWritable> {
+        //03(2).创建输出Text类型的单词输出对象
+        private Text word = new Text();
+        //03(3).创建全局的1的序列化对象（供输出使用）
+        private final IntWritable one = new IntWritable(1);
+
+        //01.shift+alt+s，点击"Override/Implements Methods"，点击"map()"，实现map方法
+        @Override
+        protected void map(LongWritable key, Text value, Context context)
+                throws IOException, InterruptedException {
+            //02.处理行文本
+            String lineText = value.toString();//行文本字符串
+            String[] words = lineText.split(" ");//使用空格切分
+            //03(1).循环输出每个单词及其对应数目1
+            for (int i = 0; i < words.length; i++) {
+                word.set(words[i]);//将单词赋值
+                System.out.println("aaaaaaaaaa = " + words[i]);
+                context.write(word, one);//map阶段数据输出
+            }
+        }
+    }
+
+        public static class WordCountReducer extends Reducer<Text, IntWritable, Text,IntWritable> {
+            //04(2).创建输出IntWritable类型的个数输出对象
+            private final IntWritable sumWritable = new IntWritable();
+            //01.实现reducer方法。输入的值为map阶段输出key对应的value值的集合
+            @Override
+            protected void reduce(Text word, Iterable<IntWritable> oneInter,Context context)
+                    throws IOException, InterruptedException {
+                //03(2).单词次数总和
+                int sum = 0;
+                //02.遍历输入value，此时的value是经过对key分组后的集合，即为该单词对应的map阶段所有输出value
+                Iterator<IntWritable> iterator = oneInter.iterator();//获取遍历器
+                while (iterator.hasNext()) {//遍历
+                    IntWritable one = iterator.next();
+                    //03(1).累加该单词的所有值
+                    sum += one.get();
+                }
+                System.out.println("ssss="+sum);
+                //04(3).将总数赋值给输出序列化对象
+                sumWritable.set(sum);
+                //04(1).输出单词及其对应个数
+                context.write(word, sumWritable);
+            }
+        }
+    public static void main(String[] args) throws IllegalArgumentException, IOException,
+            ClassNotFoundException, InterruptedException {
+        BasicConfigurator.configure();//log输出
+
+
+
+
+        //本类需要输入输出路径两个参数，因此需要判断输入参数是否是两个
+        //String[] otherArgs = new GenericOptionsParser(conf, args).getRemainingArgs();
+        /*
+        if (otherArgs.length < 2){//若参数个数不符合要求，则退出运行
+            System.err.println("Usage: wordcount <in> [<in>...] <out>");
+            System.exit(2);
+        }
+        */
+        Configuration conf = new Configuration();
+       // conf.setStrings("mapreduce.reduce.shuffle.memory.limit.percent", "0.1");
+        Job job = Job.getInstance(conf);
+        job.setJarByClass(WordCountMR.class);//反射加载MapReduce主类
+
+
+        // 输入输出路径设置
+        FileInputFormat.addInputPath(job, new Path("E:\\testBig\\in.in"));
+        FileOutputFormat.setOutputPath(job, new Path("E:\\testBig\\out.out"));
+
+
+        //设置MR输入数据格式
+        job.setInputFormatClass(TextInputFormat.class);
+
+        //设置map阶段主类
+        job.setMapperClass(WordCountMapper.class);
+        //设置map阶段输出key的类型
+        job.setMapOutputKeyClass(Text.class);
+        //设置map阶段输出value的类型
+        job.setMapOutputValueClass(IntWritable.class);
+
+        //设置reduce阶段主类
+        job.setReducerClass(WordCountReducer.class);
+        //设置reduce阶段输出key的类型(若map阶段并未设置输出key类型，则此参数同样适用于map阶段输出key)
+        job.setOutputKeyClass(Text.class);
+        //设置reduce阶段输出value的类型(若reduce阶段并未设置输出value类型，则此参数同样适用于reduce阶段输出value)
+        job.setOutputValueClass(IntWritable.class);
+
+        //运行job并根据最后的job状态退出程序
+        System.exit(job.waitForCompletion(true) ? 0 : 1);
+    }
+}
