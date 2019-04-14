@@ -7,67 +7,177 @@ import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.KeyValueTextInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
+import org.apache.hadoop.mapreduce.lib.jobcontrol.ControlledJob;
+import org.apache.hadoop.mapreduce.lib.jobcontrol.JobControl;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
-import org.apache.hadoop.util.GenericOptionsParser;
 import org.apache.log4j.BasicConfigurator;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 
-public class WordCountMR {
+public class SlopeOne {
 
-    public static class WordCountMapper extends Mapper<LongWritable, Text, Text, IntWritable> {
-        //03(2).创建输出Text类型的单词输出对象
-        private Text word = new Text();
-        //03(3).创建全局的1的序列化对象（供输出使用）
-        private final IntWritable one = new IntWritable(1);
+    public static class Job1Mapper extends Mapper<LongWritable, Text, Text, Text> {
+        private Text word1 = new Text();
+        private Text word2 = new Text();
 
-        //01.shift+alt+s，点击"Override/Implements Methods"，点击"map()"，实现map方法
         @Override
-        protected void map(LongWritable key, Text value, Context context)
-                throws IOException, InterruptedException {
-            //02.处理行文本
-            String lineText = value.toString();//行文本字符串
-            String[] words = lineText.split(" ");//使用空格切分
-            //03(1).循环输出每个单词及其对应数目1
-            for (int i = 0; i < words.length; i++) {
-                word.set(words[i]);//将单词赋值
-                System.out.println("aaaaaaaaaa = " + words[i]);
-                context.write(word, one);//map阶段数据输出
+        protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+            String strings = value.toString();
+            String[] split = strings.split(" ");
+            word1.set(split[0]);
+            if (split.length > 2) {
+                word2.set(split[1] + " " + split[2]);
+            } else {
+                word2.set(split[1] + " " + "-1");
+            }
+
+            context.write(word1, word2);
+
+        }
+    }
+
+    public static class Job1Reducer extends Reducer<Text, Text, Text, Text> {
+        private Text word1 = new Text();
+        private Text word2 = new Text();
+
+
+        @Override
+        protected void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+            Iterator<Text> it = values.iterator();
+            String[] s;
+            List<Integer> s_name = new ArrayList<Integer>(); //商铺名
+            List<Integer> score = new ArrayList<Integer>();
+            while (it.hasNext()) {
+                s = it.next().toString().split(" ");
+                s_name.add(Integer.parseInt(s[0]));
+                score.add(Integer.parseInt(s[1]));
+            }
+            System.out.println("qqqqqqqqqq+="+ s_name.size());
+            for (int i = 0; i < s_name.size(); i++) {
+                for (int j = 0; j < s_name.size(); j++) {
+                    if (s_name.get(i) < s_name.get(j)) {
+                        System.out.println("qqqqqqqqqq+="+ s_name.get(i)+" "+s_name.get(j));
+                        String status;
+
+                        //1表示第二个是需要预测的，0表示第一个是需要预测的。
+                        if (score.get(i) != -1&& score.get(j)!= -1)
+                            status = "-1";
+                        else if (score.get(i) == -1&& score.get(j)== -1)
+                            status = "-1";
+                        else if (score.get(i) == -1&& score.get(j)!= -1)
+                            status = "1";
+                        else
+                            status = "0";
+
+                        word1.set(s_name.get(j) + " " + s_name.get(i));
+                        if (status.equals("-1"))
+                            word2.set(key.toString()+" "+Integer.toString(score.get(j) - score.get(i) ) + " " + status);
+                        else if (status.equals("0"))
+                            word2.set(key.toString()+" "+Integer.toString(score.get(i) ) + " " + status);
+                        else
+                            word2.set(key.toString()+" "+Integer.toString(score.get(j) ) + " " + status);
+                        context.write(word1, word2);
+                    }
+                }
             }
         }
     }
 
-        public static class WordCountReducer extends Reducer<Text, IntWritable, Text,IntWritable> {
-            //04(2).创建输出IntWritable类型的个数输出对象
-            private final IntWritable sumWritable = new IntWritable();
-            //01.实现reducer方法。输入的值为map阶段输出key对应的value值的集合
-            @Override
-            protected void reduce(Text word, Iterable<IntWritable> oneInter,Context context)
-                    throws IOException, InterruptedException {
-                //03(2).单词次数总和
-                int sum = 0;
-                //02.遍历输入value，此时的value是经过对key分组后的集合，即为该单词对应的map阶段所有输出value
-                Iterator<IntWritable> iterator = oneInter.iterator();//获取遍历器
-                while (iterator.hasNext()) {//遍历
-                    IntWritable one = iterator.next();
-                    //03(1).累加该单词的所有值
-                    sum += one.get();
+    public static class Job2Mapper extends Mapper<Text, Text, Text, Text>{
+        @Override
+        protected void map(Text key, Text value, Context context) throws IOException, InterruptedException {
+            context.write(key,value);
+        }
+    }
+
+    public static class Job2Reducer extends Reducer<Text ,Text, Text, Text>{
+        private Text word1 = new Text();
+        private Text word2 = new Text();
+        @Override
+        protected void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+            System.out.println("aaaaaaaaaaaaaaaa+=" + key.toString());
+            boolean need = false;
+
+            List<String> name = new ArrayList<String>();
+            List<Integer> score = new ArrayList<Integer>();
+            List<Integer> flag = new ArrayList<Integer>();
+
+            List<Integer> rem  = new ArrayList<Integer>();
+            Iterator<Text> it= values.iterator();
+            while (it.hasNext()) {
+                String[] ans = it.next().toString().split(" ");
+                name.add(ans[0]);
+                score.add(Integer.parseInt(ans[1]));
+                flag.add(Integer.parseInt(ans[2]));
+                if (Integer.parseInt(ans[2])!=-1) need = true;
+            }
+
+            if(need) {
+                int num = 0,sum = 0;
+
+                for (int i = 0; i < score.size();i++) {
+                    if (flag.get(i)==-1) {
+                        num++;
+                        sum += score.get(i);
+                    }
+                    if(flag.get(i)!=-1){
+                        rem.add(i);
+                    }
                 }
-                System.out.println("ssss="+sum);
-                //04(3).将总数赋值给输出序列化对象
-                sumWritable.set(sum);
-                //04(1).输出单词及其对应个数
-                context.write(word, sumWritable);
+                int avg = sum / num;
+                int fsum = 0;
+                String keys[] = key.toString().split(" ");
+                for (int i = 0; i < rem.size(); i++)
+                {
+                    int index = rem.get(i);//需要评估的下标
+                    int wk;//是哪个需要评估
+                    if (flag.get(index) == 0)
+                    {
+                         fsum =  score.get(index) + avg;
+                         wk = 0;
+                    }
+                    else{
+                        fsum =  score.get(index) - avg;
+                        wk = 1;
+                    }
+                    word1.set(name.get(index) + " " + keys[wk]);
+                    word2.set(fsum + "");
+                    context.write(word1,word2);
+                }
             }
         }
+    }
+    public static class Job3Mapper extends Mapper<Text, Text, Text, Text>{
+        @Override
+        protected void map(Text key, Text value, Context context) throws IOException, InterruptedException {
+            context.write(key,value);
+        }
+    }
+    public static class Job3Reducer extends Reducer<Text, Text, Text, Text>{
+        private Text word1 = new Text();
+        @Override
+        protected void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+            System.out.println("zzzzzzzzzzzzzzzzz");
+            Iterator<Text> it = values.iterator();
+            int sum = 0,score = 0;
+            while (it.hasNext()){
+                String s = it.next().toString();
+                sum++;
+                score += Integer.parseInt(s);
+            }
+            word1.set(score/sum +"");
+            context.write(key,word1);
+        }
+    }
+
     public static void main(String[] args) throws IllegalArgumentException, IOException,
             ClassNotFoundException, InterruptedException {
         BasicConfigurator.configure();//log输出
-
-
-
 
         //本类需要输入输出路径两个参数，因此需要判断输入参数是否是两个
         //String[] otherArgs = new GenericOptionsParser(conf, args).getRemainingArgs();
@@ -78,9 +188,9 @@ public class WordCountMR {
         }
         */
         Configuration conf = new Configuration();
-       // conf.setStrings("mapreduce.reduce.shuffle.memory.limit.percent", "0.1");
+        // conf.setStrings("mapreduce.reduce.shuffle.memory.limit.percent", "0.1");
         Job job = Job.getInstance(conf);
-        job.setJarByClass(WordCountMR.class);//反射加载MapReduce主类
+        job.setJarByClass(SlopeOne.class);//反射加载MapReduce主类
 
 
         // 输入输出路径设置
@@ -90,22 +200,89 @@ public class WordCountMR {
 
         //设置MR输入数据格式
         job.setInputFormatClass(TextInputFormat.class);
-
         //设置map阶段主类
-        job.setMapperClass(WordCountMapper.class);
+        job.setMapperClass(Job1Mapper.class);
         //设置map阶段输出key的类型
         job.setMapOutputKeyClass(Text.class);
         //设置map阶段输出value的类型
-        job.setMapOutputValueClass(IntWritable.class);
+        job.setMapOutputValueClass(Text.class);
 
         //设置reduce阶段主类
-        job.setReducerClass(WordCountReducer.class);
+        job.setReducerClass(Job1Reducer.class);
         //设置reduce阶段输出key的类型(若map阶段并未设置输出key类型，则此参数同样适用于map阶段输出key)
         job.setOutputKeyClass(Text.class);
         //设置reduce阶段输出value的类型(若reduce阶段并未设置输出value类型，则此参数同样适用于reduce阶段输出value)
-        job.setOutputValueClass(IntWritable.class);
+        job.setOutputValueClass(Text.class);
+
+        //System.exit(job.waitForCompletion(true) ? 0 : 1); //job测试
+
+
+
+        Job job2 = Job.getInstance(conf);
+        job2.setJarByClass(SlopeOne.class);
+        job2.setInputFormatClass(KeyValueTextInputFormat.class);
+        FileInputFormat.addInputPath(job2, new Path("E:\\testBig\\out.out" + "/part-r-00000"));
+        FileOutputFormat.setOutputPath(job2, new Path("E:\\testBig\\out.out2"));
+
+        job2.setMapperClass(Job2Mapper.class);
+        job2.setMapOutputKeyClass(Text.class);
+        job2.setMapOutputValueClass(Text.class);
+
+        job2.setReducerClass(Job2Reducer.class);
+        job2.setOutputKeyClass(Text.class);
+        //设置reduce阶段输出value的类型(若reduce阶段并未设置输出value类型，则此参数同样适用于reduce阶段输出value)
+        job2.setOutputValueClass(Text.class);
+
+
+        Job job3 = Job.getInstance(conf);
+        job3.setJarByClass(SlopeOne.class);
+        job3.setInputFormatClass(KeyValueTextInputFormat.class);
+        FileInputFormat.addInputPath(job3, new Path("E:\\testBig\\out.out2" + "/part-r-00000"));
+        FileOutputFormat.setOutputPath(job3, new Path("E:\\testBig\\out.out3"));
+
+        job3.setMapperClass(Job3Mapper.class);
+        job3.setMapOutputKeyClass(Text.class);
+        job3.setMapOutputValueClass(Text.class);
+
+        job3.setReducerClass(Job3Reducer.class);
+        job3.setOutputKeyClass(Text.class);
+        //设置reduce阶段输出value的类型(若reduce阶段并未设置输出value类型，则此参数同样适用于reduce阶段输出value)
+        job3.setOutputValueClass(Text.class);
+
 
         //运行job并根据最后的job状态退出程序
-        System.exit(job.waitForCompletion(true) ? 0 : 1);
+
+        //job1加入控制器
+        ControlledJob ctrlJob1 = new ControlledJob(conf);
+        ctrlJob1.setJob(job);
+        //job2加入控制器
+        ControlledJob ctrlJob2 = new ControlledJob(conf);
+        ctrlJob2.setJob(job2);
+        //job2加入控制器
+        ControlledJob ctrlJob3 = new ControlledJob(conf);
+        ctrlJob3.setJob(job3);
+
+        //设置作业之间的依赖关系，job2的输入依赖job1的输出
+        ctrlJob2.addDependingJob(ctrlJob1);
+        ctrlJob3.addDependingJob(ctrlJob2);
+
+        //设置主控制器，控制job1和job2两个作业
+        JobControl jobCtrl = new JobControl("myCtrl");
+        //添加到总的JobControl里，进行控制
+        jobCtrl.addJob(ctrlJob1);
+        jobCtrl.addJob(ctrlJob2);
+        jobCtrl.addJob(ctrlJob3);
+
+
+        //在线程中启动，记住一定要有这个
+        Thread thread = new Thread(jobCtrl);
+        thread.start();
+        while (true) {
+            if (jobCtrl.allFinished()) {
+                System.out.println(jobCtrl.getSuccessfulJobList());
+                jobCtrl.stop();
+                break;
+            }
+        }
     }
 }
